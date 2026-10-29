@@ -1,0 +1,112 @@
+import os
+from datetime import datetime, timezone
+from typing import Any
+
+PROVIDER_ENV = "BISTOPENAPI_PROVIDER"
+API_KEY_ENV = "BISTOPENAPI_API_KEY"
+
+
+def provider_mode() -> str:
+    return os.getenv(PROVIDER_ENV, "demo").strip().lower()
+
+
+def market_status() -> dict[str, Any]:
+    enabled = provider_mode() == "borsapy"
+    configured = enabled and bool(os.getenv(API_KEY_ENV))
+    return {
+        "name": "borsapy" if enabled else "demo",
+        "mode": "delayed_external_source" if enabled else "demo",
+        "live_data_available": configured,
+        "access_protected": enabled,
+        "note": (
+            "Personal-use integration only. Upstream terms apply; do not redistribute data without permission."
+            if enabled else "No real market prices are served in demo mode."
+        ),
+    }
+
+
+def _ticker(symbol: str):
+    if provider_mode() != "borsapy":
+        raise RuntimeError("Market-data provider is not enabled.")
+    if not os.getenv(API_KEY_ENV):
+        raise RuntimeError("BISTOPENAPI_API_KEY must be configured before enabling market data.")
+    try:
+        import borsapy as bp
+    except ImportError as exc:
+        raise RuntimeError("borsapy is not installed in this deployment.") from exc
+    clean_symbol = symbol.strip().upper()
+    if not clean_symbol or not clean_symbol.replace(".", "").isalnum():
+        raise ValueError("Invalid symbol.")
+    return bp.Ticker(clean_symbol)
+
+
+def get_quote(symbol: str) -> dict[str, Any]:
+    ticker = _ticker(symbol)
+    try:
+        info = ticker.info
+    except Exception as exc:
+        raise RuntimeError(f"Upstream quote request failed: {type(exc).__name__}") from exc
+    if not isinstance(info, dict):
+        try:
+            info = dict(info)
+        except Exception as exc:
+            raise RuntimeError("Provider returned an unexpected quote format.") from exc
+    price = None
+    for key in ("last", "last_price", "currentPrice", "regularMarketPrice", "close"):
+        value = info.get(key)
+        if value is not None:
+            try:
+                price = float(value)
+                break
+            except (TypeError, ValueError):
+                continue
+    if price is None:
+        raise RuntimeError("Provider returned no usable price for this symbol.")
+    return {
+        "symbol": symbol.upper(),
+        "price": price,
+        "currency": info.get("currency") or "TRY",
+        "source": "borsapy",
+        "data_mode": "delayed_external_source",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "note": "Provider timestamps and delay may vary; verify before trading.",
+    }
+
+
+def get_ohlcv(symbol: str, interval: str, limit: int) -> dict[str, Any]:
+    ticker = _ticker(symbol)
+    try:
+        frame = ticker.history(period="1y", interval=interval)
+    except Exception as exc:
+        raise RuntimeError(f"Upstream history request failed: {type(exc).__name__}") from exc
+    if frame is None or getattr(frame, "empty", True):
+        raise RuntimeError("Provider returned no historical candles for this symbol.")
+    rows = []
+    try:
+        for index, row in frame.tail(limit).iterrows():
+            stamp = index.isoformat() if hasattr(index, "isoformat") else str(index)
+            item = {"timestamp": stamp}
+            for source_key, target_key in (
+                ("Open", "open"), ("High", "high"), ("Low", "low"),
+                ("Close", "close"), ("Volume", "volume"),
+            ):
+                value = row.get(source_key)
+                if value is None:
+                    value = row.get(target_key)
+                try:
+                    value = float(value) if value is not None else None
+                except (TypeError, ValueError):
+                    value = None
+                item[target_key] = value
+            rows.append(item)
+    except Exception as exc:
+        raise RuntimeError("Could not normalize provider history response.") from exc
+    return {
+        "symbol": symbol.upper(),
+        "interval": interval,
+        "source": "borsapy",
+        "data_mode": "delayed_external_source",
+        "count": len(rows),
+        "candles": rows,
+        "note": "Availability and delay depend on the upstream source.",
+    }
