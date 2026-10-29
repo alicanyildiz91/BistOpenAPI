@@ -40,26 +40,74 @@ def _ticker(symbol: str):
     return bp.Ticker(clean_symbol)
 
 
+def _as_mapping(value: Any) -> dict[str, Any]:
+    """Normalize dict-like provider objects without assuming every object is iterable."""
+    if isinstance(value, dict):
+        return value
+    if value is None:
+        return {}
+    try:
+        converted = dict(value)
+        if isinstance(converted, dict):
+            return converted
+    except (TypeError, ValueError):
+        pass
+    # Some provider versions expose a mapping-like object with keys()/getitem().
+    try:
+        return {key: value[key] for key in value.keys()}
+    except Exception:
+        return {}
+
+
 def get_quote(symbol: str) -> dict[str, Any]:
     ticker = _ticker(symbol)
+    info: dict[str, Any] = {}
+
+    # borsapy documents fast_info["last_price"] as the quick quote field.
+    # Prefer it, then fall back to the detailed info object for compatibility.
     try:
-        info = ticker.info
-    except Exception as exc:
-        raise RuntimeError(f"Upstream quote request failed: {type(exc).__name__}") from exc
-    if not isinstance(info, dict):
+        info = _as_mapping(ticker.fast_info)
+    except Exception:
+        info = {}
+
+    if not info:
         try:
-            info = dict(info)
+            info = _as_mapping(ticker.info)
         except Exception as exc:
-            raise RuntimeError("Provider returned an unexpected quote format.") from exc
+            raise RuntimeError(f"Upstream quote request failed: {type(exc).__name__}") from exc
+
     price = None
-    for key in ("last", "last_price", "currentPrice", "regularMarketPrice", "close"):
+    for key in (
+        "last_price", "last", "currentPrice", "regularMarketPrice",
+        "close", "price", "lastPrice",
+    ):
         value = info.get(key)
         if value is not None:
             try:
-                price = float(value)
-                break
-            except (TypeError, ValueError):
+                candidate = float(value)
+                if candidate > 0:
+                    price = candidate
+                    break
+            except (TypeError, ValueError, OverflowError):
                 continue
+
+    # If fast_info is present but has no usable price, try detailed info once.
+    if price is None:
+        try:
+            detailed = _as_mapping(ticker.info)
+        except Exception:
+            detailed = {}
+        for key in ("last", "last_price", "currentPrice", "regularMarketPrice", "close", "price"):
+            value = detailed.get(key)
+            try:
+                candidate = float(value)
+                if candidate > 0:
+                    price = candidate
+                    info = detailed
+                    break
+            except (TypeError, ValueError, OverflowError):
+                continue
+
     if price is None:
         raise RuntimeError("Provider returned no usable price for this symbol.")
     return {
