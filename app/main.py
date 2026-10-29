@@ -85,8 +85,8 @@ def indexes(search: str | None = Query(default=None, min_length=1, max_length=40
     """List known BIST index codes/names; optional case-insensitive search by code or name."""
     try:
         rows = istfin_scraper.get_indexes()
-    except RuntimeError:
-        rows = get_provider()["indexes"]
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     if search:
         term = search.strip().casefold()
         rows = [row for row in rows if term in row["code"].casefold() or term in row["name"].casefold()]
