@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse
 
 from app.providers import get_provider
 from app.market_data import get_quote, get_ohlcv, market_status, provider_mode
-from app import istfin_scraper
+from app import index_source
 
 app = FastAPI(
     title="BistOpenAPI",
@@ -84,7 +84,7 @@ def stock(symbol: str):
 def indexes(search: str | None = Query(default=None, min_length=1, max_length=40)):
     """List known BIST index codes/names; optional case-insensitive search by code or name."""
     try:
-        rows = istfin_scraper.get_indexes()
+        rows = index_source.get_indexes()
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     if search:
@@ -96,7 +96,7 @@ def indexes(search: str | None = Query(default=None, min_length=1, max_length=40
 @app.get("/v1/indexes/{index_code}", tags=["Indexes"])
 def index(index_code: str):
     try:
-        return istfin_scraper.get_index(index_code)
+        return index_source.get_index(index_code)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Index code not found in catalogue") from exc
     except RuntimeError as exc:
