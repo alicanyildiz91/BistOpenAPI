@@ -85,12 +85,60 @@ def get_indexes(force_refresh: bool = False) -> list[dict]:
 
 
 def get_index(code: str, force_refresh: bool = False) -> dict:
+    """Return index members from borsapy's TradingView/BIST-backed index adapter.
+
+    Index metadata is still checked against Borsa İstanbul's official pages.
+    Constituents are sourced through borsapy and are not represented as a
+    licensed BIST real-time feed. Validate the expected count and fail closed
+    if the upstream list is incomplete.
+    """
     code = code.strip().upper()
     record = next((dict(row) for row in get_indexes(force_refresh) if row["code"] == code), None)
     if record is None:
         raise KeyError(code)
-    raise RuntimeError(
-        f"{code}: Borsa İstanbul public index page confirms the index but does not expose "
-        "the complete current constituent list in its public HTML. Membership was not guessed. "
-        "A complete official constituent file or authorized BIST data feed is required."
-    )
+
+    expected_counts = {"XU030": 30, "XU050": 50, "XU100": 100, "XU500": 500}
+    try:
+        import borsapy as bp
+        index_obj = bp.Index(code)
+        raw = index_obj.components
+    except Exception as exc:
+        raise RuntimeError(
+            f"{code}: endeks bileşenleri borsapy/TradingView kaynağından alınamadı "
+            f"({type(exc).__name__}). Eski veya tahmini liste kullanılmadı."
+        ) from exc
+
+    if raw is None:
+        raise RuntimeError(f"{code}: kaynak boş endeks bileşen listesi döndürdü.")
+
+    symbols: list[str] = []
+    for item in raw:
+        if isinstance(item, dict):
+            symbol = item.get("symbol") or item.get("ticker") or item.get("code")
+        else:
+            symbol = item
+        symbol = str(symbol or "").strip().upper()
+        # Ignore malformed rows rather than passing them to the scanner.
+        if symbol and symbol.replace(".", "").isalnum() and symbol not in symbols:
+            symbols.append(symbol)
+
+    expected = expected_counts[code]
+    if len(symbols) != expected:
+        raise RuntimeError(
+            f"{code}: endeks bileşen listesi eksik veya beklenmeyen uzunlukta "
+            f"({len(symbols)}/{expected}). Sinyal üretimi için liste reddedildi."
+        )
+
+    record.update({
+        "constituents": [{"symbol": symbol} for symbol in symbols],
+        "constituentCount": len(symbols),
+        "asOfDay": None,
+        "source": "borsapy → TradingView/BIST index components",
+        "data_mode": "external_index_components",
+        "membership_available": True,
+        "membership_note": (
+            "Bileşenler borsapy'nin harici endeks sağlayıcısından alınır; "
+            "resmî BIST lisanslı veri akışı değildir. Kaynak güncelliği değişebilir."
+        ),
+    })
+    return record
