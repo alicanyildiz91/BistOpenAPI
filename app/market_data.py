@@ -15,11 +15,14 @@ def market_status() -> dict[str, Any]:
     configured = enabled and bool(os.getenv(API_KEY_ENV))
     return {
         "name": "borsapy" if enabled else "demo",
-        "mode": "delayed_external_source" if enabled else "demo",
-        "live_data_available": configured,
+        "mode": "external_source_delay_unverified" if enabled else "demo",
+        # Configuration only proves that the adapter is enabled; it does not
+        # prove real-time delivery or per-symbol availability.
+        "live_data_available": False,
+        "provider_configured": configured,
         "access_protected": enabled,
         "note": (
-            "Personal-use integration only. Upstream terms apply; do not redistribute data without permission."
+            "borsapy aggregates external sources that vary by endpoint. Provider configuration does not prove real-time delivery; verify per-symbol timestamps and terms. Do not redistribute without permission."
             if enabled else "No real market prices are served in demo mode."
         ),
     }
@@ -115,8 +118,10 @@ def get_quote(symbol: str) -> dict[str, Any]:
         "price": price,
         "currency": info.get("currency") or "TRY",
         "source": "borsapy",
-        "data_mode": "delayed_external_source",
+        "data_mode": "external_source_delay_unverified",
+        "source_note": "borsapy; upstream source varies by endpoint",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp_semantics": "retrieval_time_not_exchange_trade_time",
         "note": "Provider timestamps and delay may vary; verify before trading.",
     }
 
@@ -153,7 +158,8 @@ def get_ohlcv(symbol: str, interval: str, limit: int) -> dict[str, Any]:
         "symbol": symbol.upper(),
         "interval": interval,
         "source": "borsapy",
-        "data_mode": "delayed_external_source",
+        "data_mode": "external_source_delay_unverified",
+        "source_note": "borsapy; upstream source varies by endpoint",
         "count": len(rows),
         "candles": rows,
         "note": "Availability and delay depend on the upstream source.",
