@@ -137,9 +137,9 @@ def get_index(code: str, force_refresh: bool = False) -> dict:
     # Guard against returning an obviously incomplete XU500 list. The public
     # page currently advertises a large-cap index; never label a tiny sample as
     # the full membership. Fail closed so /tara cannot silently scan 60 stocks.
-    if code == "XU500" and len(symbols) < 100:
+    if code == "XU500" and len(symbols) < 400:
         raise RuntimeError(
-            f"istfin XU500 page exposed only {len(symbols)} unique symbols; "
+            f"istfin XU500 page exposed only {len(symbols)} unique symbols (expected at least 400); "
             "refusing to publish an incomplete BIST 500 membership list"
         )
     if not symbols:
