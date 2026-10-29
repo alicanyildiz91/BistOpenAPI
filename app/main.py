@@ -80,15 +80,20 @@ def stock(symbol: str):
 
 
 @app.get("/v1/indexes", tags=["Indexes"])
-def indexes():
-    return get_provider()["indexes"]
+def indexes(search: str | None = Query(default=None, min_length=1, max_length=40)):
+    """List known BIST index codes/names; optional case-insensitive search by code or name."""
+    rows = get_provider()["indexes"]
+    if search:
+        term = search.strip().casefold()
+        rows = [row for row in rows if term in row["code"].casefold() or term in row["name"].casefold()]
+    return rows
 
 
 @app.get("/v1/indexes/{index_code}", tags=["Indexes"])
 def index(index_code: str):
     item = next((r for r in indexes() if r["code"] == index_code.upper()), None)
     if item is None:
-        raise HTTPException(status_code=404, detail="Index not found")
+        raise HTTPException(status_code=404, detail="Index code not found in catalogue")
     return item
 
 
