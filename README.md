@@ -19,9 +19,14 @@ uvicorn app.main:app --reload
 - `GET /v1/providers` — active provider and limitations
 - `GET /v1/stocks?q=thyao&limit=20` — search sample symbols
 - `GET /v1/stocks/{symbol}` — read sample symbol
-- `GET /v1/indexes` — sample index metadata
+- `GET /v1/indexes` — official Borsa İstanbul catalogue for XU030, XU050, XU100 and XU500
+- `GET /v1/indexes/{code}` — constituent membership; currently fails closed until a complete official BIST membership source is connected
 - `GET /v1/quote/{symbol}` — optional quote endpoint (API key required)
 - `GET /v1/ohlcv/{symbol}?interval=1d&limit=30` — optional candles (API key required)
+
+## Official index source
+
+Index metadata is read from Borsa İstanbul public pages. ISTFIN has been removed from the index catalogue and membership scraper. The public index detail pages do not expose a complete current constituent list in their HTML, so membership requests return an explicit error rather than fabricated or incomplete symbols. Connect an official constituent file or authorized BIST data feed before enabling index scans.
 
 ## Optional personal-use provider
 The default provider is demo and returns no real prices. To enable the optional `borsapy` adapter, set these Render environment variables:
