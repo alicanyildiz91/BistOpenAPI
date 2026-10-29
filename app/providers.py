@@ -1,3 +1,6 @@
+from app.index_catalog import get_index_catalog
+
+
 def get_provider():
     # Demo-only catalogue. This is not a complete or official BIST universe.
     stocks = [
@@ -12,11 +15,7 @@ def get_provider():
         {"symbol": "KCHOL", "name": "Koç Holding", "exchange": "BIST", "currency": "TRY", "source": "demo", "data_mode": "demo"},
         {"symbol": "SISE", "name": "Şişecam", "exchange": "BIST", "currency": "TRY", "source": "demo", "data_mode": "demo"},
     ]
-    indexes = [
-        {"code": "XU030", "name": "BIST 30", "constituents": [], "source": "demo", "data_mode": "demo", "note": "Not an authoritative index component list."},
-        {"code": "XU050", "name": "BIST 50", "constituents": [], "source": "demo", "data_mode": "demo", "note": "Not an authoritative index component list."},
-        {"code": "XU100", "name": "BIST 100", "constituents": [], "source": "demo", "data_mode": "demo", "note": "Not an authoritative index component list."},
-    ]
+    indexes = get_index_catalog()
     return {
         "name": "demo",
         "mode": "demo",
