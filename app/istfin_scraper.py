@@ -1,22 +1,19 @@
 """Official Borsa Istanbul index catalogue reader.
 
-The public BIST index pages identify benchmark indices, but do not expose a
-complete live constituent list in their rendered public HTML. This module
-therefore publishes only the four requested official index definitions and
-fails closed for memberships until a complete official constituent source is
-available. It never uses ISTFIN or fabricates symbols.
+Borsa İstanbul's catalogue page renders its index table dynamically and does
+not expose individual index links in the static HTML. Verify the four official
+index detail pages directly instead. Memberships remain disabled until a
+complete official constituent source is available; never fabricate symbols.
 """
 from __future__ import annotations
 
 import re
 import threading
 import time
-from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 BASE = "https://www.borsaistanbul.com"
-INDEX_URL = f"{BASE}/endeksler"
 CACHE_TTL = 6 * 60 * 60
 INDEX_NAMES = {
     "XU030": "BIST 30",
@@ -29,35 +26,12 @@ _indexes_cache: list[dict] = []
 _indexes_at = 0.0
 
 
-class _LinkParser(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.links: list[tuple[str, str]] = []
-        self.href: str | None = None
-        self.text: list[str] = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag.lower() == "a":
-            self.href = dict(attrs).get("href")
-            self.text = []
-
-    def handle_data(self, data):
-        if self.href is not None:
-            self.text.append(data)
-
-    def handle_endtag(self, tag):
-        if tag.lower() == "a" and self.href is not None:
-            self.links.append((self.href, " ".join("".join(self.text).split())))
-            self.href = None
-            self.text = []
-
-
 def _get(url: str) -> str:
     request = Request(
         url,
         headers={
-            "User-Agent": "BistOpenAPI/0.4 (+official Borsa Istanbul index reader)",
-            "Accept": "text/html",
+            "User-Agent": "Mozilla/5.0 (compatible; BistOpenAPI/0.4; official index catalogue check)",
+            "Accept": "text/html,application/xhtml+xml",
         },
     )
     try:
@@ -75,14 +49,15 @@ def get_indexes(force_refresh: bool = False) -> list[dict]:
         if _indexes_cache and not force_refresh and time.monotonic() - _indexes_at < CACHE_TTL:
             return [dict(row) for row in _indexes_cache]
 
-    html = _get(INDEX_URL)
-    parser = _LinkParser()
-    parser.feed(html)
-    discovered = set()
-    for href, _label in parser.links:
-        match = re.search(r"/endeks/xu(030|050|100|500)(?:[/?#]|$)", href, re.I)
-        if match:
-            discovered.add("XU" + match.group(1))
+    # The main catalogue table is populated client-side. Verify each official
+    # detail page directly instead of searching for links on /endeksler.
+    discovered: set[str] = set()
+    for code, name in INDEX_NAMES.items():
+        html = _get(f"{BASE}/endeks/{code.lower()}")
+        if re.search(rf"\b{re.escape(code)}\b", html, re.I) and re.search(
+            rf"\b{re.escape(name)}\b", html, re.I
+        ):
+            discovered.add(code)
 
     missing = set(INDEX_NAMES) - discovered
     if missing:
