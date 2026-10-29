@@ -13,6 +13,8 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from app.index_catalog import INDEX_NAMES
+
 BASE = "https://istfin.com"
 INDEX_URL = f"{BASE}/endeksler"
 CACHE_TTL = 6 * 60 * 60
@@ -71,7 +73,7 @@ def get_indexes(force_refresh: bool = False) -> list[dict]:
         code = match.group(1).upper()
         if code in ("ENDEKSLER",):
             continue
-        found.setdefault(code, label or code)
+        found.setdefault(code, INDEX_NAMES.get(code, label or code))
     if len(found) < 30:
         raise RuntimeError(f"istfin index page returned too few index links ({len(found)})")
     rows = [
