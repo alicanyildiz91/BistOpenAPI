@@ -109,8 +109,9 @@ def get_index(code: str, force_refresh: bool = False) -> dict:
             record["membership_available"] = True
             return record
 
+    page_html = _get(f"{INDEX_URL}/{code}")
     parser = _LinkParser()
-    parser.feed(_get(f"{INDEX_URL}/{code}"))
+    parser.feed(page_html)
     symbols = []
     for href, label in parser.links:
         path = href.split("?", 1)[0].rstrip("/")
@@ -120,6 +121,27 @@ def get_index(code: str, force_refresh: bool = False) -> dict:
             symbol = match.group(1).upper()
             if 2 <= len(symbol) <= 6 and symbol not in symbols:
                 symbols.append(symbol)
+
+    # Some index pages render only the first table page as HTML. Also inspect
+    # embedded JSON/Next.js payloads, where the full constituent array may live.
+    # Extract symbols only from explicit symbol/ticker fields, never arbitrary words.
+    for pattern in (
+        r'"(?:symbol|ticker|stockSymbol|shortName)"\\s*:\\s*"([A-Za-z0-9]{2,6})"',
+        r"'(?:symbol|ticker|stockSymbol|shortName)'\\s*:\\s*'([A-Za-z0-9]{2,6})'",
+    ):
+        for match in re.finditer(pattern, page_html, flags=re.IGNORECASE):
+            symbol = match.group(1).upper()
+            if symbol not in symbols:
+                symbols.append(symbol)
+
+    # Guard against returning an obviously incomplete XU500 list. The public
+    # page currently advertises a large-cap index; never label a tiny sample as
+    # the full membership. Fail closed so /tara cannot silently scan 60 stocks.
+    if code == "XU500" and len(symbols) < 100:
+        raise RuntimeError(
+            f"istfin XU500 page exposed only {len(symbols)} unique symbols; "
+            "refusing to publish an incomplete BIST 500 membership list"
+        )
     if not symbols:
         raise RuntimeError(f"istfin public page did not expose constituents for {code}")
     with _lock:
