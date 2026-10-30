@@ -131,15 +131,66 @@ def quote(symbol: str, _: bool = Depends(verify_market_api_key)):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.get("/v1/ohlcv/{symbol}", tags=["Market data"])
-def ohlcv(
-    symbol: str,
-    interval: str = Query("1d", pattern="^(1d|1wk|1mo)$"),
-    limit: int = Query(30, ge=1, le=500),
-    _: bool = Depends(verify_market_api_key),
-):
+@app.get("/v1/quotes", tags=["Market data"])
+def quotes(symbols: str = Query(..., description="Comma-separated BIST symbols"), _: bool = Depends(verify_market_api_key)):
     try:
-        return get_ohlcv(symbol, interval, limit)
+        return get_quotes_batch([s for s in symbols.split(",") if s.strip()])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/v1/ohlcv/{symbol}", tags=["Market data"])
+def ohlcv(symbol: str, interval: str = Query("1d"), period: str = Query("1y"), limit: int = Query(30, ge=1, le=500), _: bool = Depends(verify_market_api_key)):
+    try:
+        return get_ohlcv(symbol, interval, limit, period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/v1/ohlcv-batch", tags=["Market data"])
+def ohlcv_batch(symbols: str = Query(...), interval: str = Query("1d"), period: str = Query("1y"), limit: int = Query(100, ge=1, le=500), _: bool = Depends(verify_market_api_key)):
+    try:
+        return get_ohlcv_batch([s for s in symbols.split(",") if s.strip()], interval, limit, period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/v1/fundamentals/{symbol}", tags=["Fundamentals"])
+def fundamentals(symbol: str, _: bool = Depends(verify_market_api_key)):
+    try:
+        return get_fundamentals(symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/v1/financials/{symbol}", tags=["Fundamentals"])
+def financials(symbol: str, _: bool = Depends(verify_market_api_key)):
+    try:
+        return get_financials(symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/v1/actions/{symbol}", tags=["Corporate actions"])
+def actions(symbol: str, _: bool = Depends(verify_market_api_key)):
+    try:
+        return get_actions(symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/v1/news/{symbol}", tags=["News"])
+def news(symbol: str, _: bool = Depends(verify_market_api_key)):
+    try:
+        return get_news(symbol)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
