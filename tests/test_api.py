@@ -21,11 +21,10 @@ def test_sample_stock_search():
     assert [row["symbol"] for row in response.json()] == ["THYAO"]
 
 
-def test_indexes_are_marked_demo():
-    response = client.get("/v1/indexes")
+def test_stock_meta_never_claims_full_coverage():
+    response = client.get("/v1/stocks/meta")
     assert response.status_code == 200
-    assert all(row["data_mode"] == "demo" for row in response.json())
-    assert all(not row["constituents"] for row in response.json())
+    assert response.json()["universe_complete"] is False
 
 
 def test_market_data_requires_provider():
@@ -34,7 +33,7 @@ def test_market_data_requires_provider():
 
 
 def test_quote_requires_api_key(monkeypatch):
-    monkeypatch.setenv("BISTOPENAPI_PROVIDER", "borsapy")
+    monkeypatch.setenv("BISTOPENAPI_PROVIDER", "yfinance")
     monkeypatch.setenv("BISTOPENAPI_API_KEY", "test-secret")
     response = client.get("/v1/quote/THYAO")
     assert response.status_code == 401
