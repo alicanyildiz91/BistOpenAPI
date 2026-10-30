@@ -5,12 +5,12 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
 from app.providers import get_provider
-from app.market_data import get_quote, get_ohlcv, market_status, provider_mode
+from app.market_data import get_quote, get_ohlcv, market_status, provider_mode, get_fundamentals, get_financials, get_actions, get_news, get_quotes_batch, get_ohlcv_batch
 from app import index_source
 
 app = FastAPI(
     title="BistOpenAPI",
-    version="0.2.0",
+    version="0.3.0",
     description="Personal BIST analysis API. Demo mode is the default; optional delayed data is API-key protected.",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -42,7 +42,7 @@ h1{font-size:clamp(2.6rem,7vw,5rem);line-height:1.02;letter-spacing:-.05em;margi
 @app.get("/v1/health", tags=["Status"])
 def health():
     status = market_status()
-    configured = provider_mode() == "borsapy" and bool(os.getenv("BISTOPENAPI_API_KEY"))
+    configured = provider_mode() in {"yfinance", "borsapy"} and bool(os.getenv("BISTOPENAPI_API_KEY"))
     return {
         "status": "ok",
         "service": "BistOpenAPI",
@@ -65,11 +65,18 @@ def providers():
 
 @app.get("/v1/stocks", tags=["Securities"])
 def stocks(q: str | None = None, limit: int = Query(100, ge=1, le=500)):
-    rows = get_provider()["stocks"]
+    catalogue = get_provider()
+    rows = catalogue["stocks"]
     if q:
         term = q.strip().upper()
         rows = [r for r in rows if term in r["symbol"].upper() or term in r["name"].upper()]
     return rows[:limit]
+
+
+@app.get("/v1/stocks/meta", tags=["Securities"])
+def stocks_meta():
+    catalogue = get_provider()
+    return {key: catalogue.get(key) for key in ("name", "mode", "universe", "universe_complete", "notes")}
 
 
 @app.get("/v1/stocks/{symbol}", tags=["Securities"])
@@ -104,7 +111,7 @@ def index(index_code: str):
 
 
 def verify_market_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")):
-    if provider_mode() != "borsapy":
+    if provider_mode() not in {"yfinance", "borsapy"}:
         raise HTTPException(status_code=503, detail="Market data provider is disabled.")
     expected = os.getenv("BISTOPENAPI_API_KEY")
     if not expected:
